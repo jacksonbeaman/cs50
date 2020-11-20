@@ -1,0 +1,39 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    Transaction History
+{% endblock %}
+
+{% block main %}
+    <div class="alert alert-primary" role="alert">
+    {{ message }}
+    </div>
+    <div>
+      <table class="table table-striped" style="text-align: left">
+        <thead>
+          <tr>
+            <th scope="col">Transaction Type</th>
+            <th scope="col">Symbol</th>
+            <th scope="col">Name</th>
+            <th scope="col">Shares</th>
+            <th scope="col">Share Price</th>
+            <th scope="col">Total Price</th>
+            <th scope="col">Transacted</th>
+          </tr>
+        </thead>
+        <tbody>
+          {%for row in rows %}
+            <tr>
+                <td scope="row">{{ row["transaction"] }}</td>
+                <td>{{ row["symbol"] }}</td>
+                <td>{{ row["name"] }}</td>
+                <td>{{ row["shares"] }}</td>
+                <td>{{ row["shareprice"] }}</td>
+                <td>{{ row["totalprice"] }}</td>
+                <td>{{ row["date"] }} {{ row["time"] }}</td>
+            </tr>
+          {%endfor%}
+        </tbody>
+      </table>
+    </div>
+{% endblock %}

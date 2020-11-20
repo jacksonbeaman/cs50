@@ -1,0 +1,5 @@
+CREATE TABLE 'portfolio' ( 'user_id' INTEGER NOT NULL, 'symbol' VARCHAR(10), 'shares' INTEGER NOT NULL, FOREIGN KEY(user_id) REFERENCES users(id) );
+
+CREATE TABLE 'transactions' ( 'id' INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, 'user_id' INTEGER NOT NULL, 'symbol' VARCHAR(10),
+'shares' INTEGER NOT NULL, 'shareprice' NUMERIC NOT NULL,'totalprice' NUMERIC NOT NULL, 'date' NUMERIC NOT NULL, 'time' NUMERIC NOT NULL,
+FOREIGN KEY(user_id) REFERENCES users(id) );
