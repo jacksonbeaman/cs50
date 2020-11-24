@@ -44,6 +44,7 @@ if not os.environ.get("API_KEY"):
 @app.route("/")
 @login_required
 def index():
+    session["message"] = "Here is your portfolio!"
     rows = db.execute("SELECT symbol, shares FROM portfolio WHERE user_id = :user_id;", user_id = session["user_id"])
     totalValue = 0
     for row in rows:
