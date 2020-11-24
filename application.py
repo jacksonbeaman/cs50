@@ -89,7 +89,15 @@ def buy():
             # modify user's cash in users table
             db.execute("UPDATE users SET cash = :cash WHERE id = :user_id;", cash = userCash[0]["cash"] - price, user_id = session["user_id"])
             # create or modfy user's stock ownership in portfolio table
-            db.execute("INSERT INTO portfolio (user_id, symbol, shares) VALUES (:user_id, :symbol, :shares);", user_id = session["user_id"], symbol = symbol, shares = shares)
+            # check if user already owns shares of this stock
+            sharesOwned = db.execute("SELECT shares FROM portfolio WHERE user_id = :user_id AND symbol = :symbol;", user_id = session["user_id"], symbol = symbol)
+            # if user does not already own stock, create new row for new stock
+            if not sharesOwned:
+                db.execute("INSERT INTO portfolio (user_id, symbol, shares) VALUES (:user_id, :symbol, :shares);", user_id = session["user_id"], symbol = symbol, shares = shares)
+            # else update row with new share total if user already owns stock    
+            else:
+                newSharesTotal = int(sharesOwned[0]["shares"]) + int(shares)  
+                db.execute("UPDATE portfolio SET shares = :shares WHERE user_id = :user_id AND symbol = :symbol;", shares = newSharesTotal, user_id = session["user_id"], symbol = symbol)          
             # create transaction record
             db.execute("INSERT INTO transactions (user_id, symbol, shares, shareprice, totalprice, date, time) VALUES (:user_id, :symbol, :shares, :shareprice, :totalprice, :date, :time);", user_id = session["user_id"], symbol = symbol, shares = shares, shareprice = quoted["price"], totalprice = price, date = date, time = time)
 
