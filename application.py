@@ -33,8 +33,8 @@ app.config["SESSION_PERMANENT"] = False
 app.config["SESSION_TYPE"] = "filesystem"
 Session(app)
 
-# Configure CS50 Library to use SQLite database
-db = SQL("sqlite:///finance.db")
+# Configure SQL database using Heroku Postgres URI
+db = SQL("postgres://ildeywqibcmzez:a3dd64fed22162f0986298a14cabbb6eb5d9017db5ed073422018404d7e5c25f@ec2-23-23-36-227.compute-1.amazonaws.com:5432/d23fvqrvb7fvja")
 
 # Make sure API key is set
 if not os.environ.get("API_KEY"):
@@ -94,10 +94,10 @@ def buy():
             # if user does not already own stock, create new row for new stock
             if not sharesOwned:
                 db.execute("INSERT INTO portfolio (user_id, symbol, shares) VALUES (:user_id, :symbol, :shares);", user_id = session["user_id"], symbol = symbol, shares = shares)
-            # else update row with new share total if user already owns stock    
+            # else update row with new share total if user already owns stock
             else:
-                newSharesTotal = int(sharesOwned[0]["shares"]) + int(shares)  
-                db.execute("UPDATE portfolio SET shares = :shares WHERE user_id = :user_id AND symbol = :symbol;", shares = newSharesTotal, user_id = session["user_id"], symbol = symbol)          
+                newSharesTotal = int(sharesOwned[0]["shares"]) + int(shares)
+                db.execute("UPDATE portfolio SET shares = :shares WHERE user_id = :user_id AND symbol = :symbol;", shares = newSharesTotal, user_id = session["user_id"], symbol = symbol)
             # create transaction record
             db.execute("INSERT INTO transactions (user_id, symbol, shares, shareprice, totalprice, date, time) VALUES (:user_id, :symbol, :shares, :shareprice, :totalprice, :date, :time);", user_id = session["user_id"], symbol = symbol, shares = shares, shareprice = quoted["price"], totalprice = price, date = date, time = time)
 
