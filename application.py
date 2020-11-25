@@ -34,7 +34,7 @@ app.config["SESSION_TYPE"] = "filesystem"
 Session(app)
 
 # Configure SQL database using Heroku Postgres URI
-db = SQL("postgres://ildeywqibcmzez:a3dd64fed22162f0986298a14cabbb6eb5d9017db5ed073422018404d7e5c25f@ec2-23-23-36-227.compute-1.amazonaws.com:5432/d23fvqrvb7fvja")
+db = SQL("sqlite:///finance.db")
 
 # Make sure API key is set
 if not os.environ.get("API_KEY"):
