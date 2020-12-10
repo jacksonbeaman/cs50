@@ -1,0 +1,19 @@
+CREATE TABLE users (id SERIAL PRIMARY KEY, 
+username VARCHAR NOT NULL,
+hash VARCHAR NOT NULL,
+cash NUMERIC NOT NULL);
+
+CREATE TABLE portfolio ( 
+user_id INTEGER REFERENCES users, 
+symbol VARCHAR NOT NULL, 
+shares INTEGER NOT NULL);
+
+CREATE TABLE transactions (
+id SERIAL PRIMARY KEY, 
+user_id INTEGER REFERENCES users, 
+symbol VARCHAR NOT NULL,
+shares INTEGER NOT NULL, 
+shareprice NUMERIC NOT NULL,
+totalprice NUMERIC NOT NULL, 
+date DATE NOT NULL, 
+time TIME NOT NULL);
