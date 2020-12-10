@@ -1,6 +1,5 @@
 import os
 
-#from cs50 import SQL
 from flask import Flask, flash, jsonify, redirect, render_template, request, session
 from flask_session import Session
 from tempfile import mkdtemp
@@ -49,11 +48,8 @@ def index():
     session["message"] = "Here is your portfolio!"
     # SQLAlchemy returns a list of Tuples
     portfolio = db.execute("SELECT symbol, shares FROM portfolio WHERE user_id = :user_id;", {"user_id": session["user_id"]}).fetchall()
-    print (portfolio)
-    print (len(portfolio))
     # initialize list of dictionaries - easier to use than tuple returned by the databas engine
     rows = [dict() for x in range(len(portfolio))]
-    print (rows)
     totalValue = 0
     for row, portfolio_stock in zip(rows, portfolio):
         # tuple values are indexed by integers
@@ -72,9 +68,6 @@ def index():
         row["total"] = usd(total)
         row["price"] = usd(price)
     userCash = db.execute("SELECT cash FROM users WHERE id = :user_id;", {"user_id": session["user_id"]}).fetchone()
-    print (userCash)
-    print (userCash[0])
-    print (userCash.cash)
     totalValue = usd(totalValue + float(userCash.cash)) # using sqlite: userCash[0]["cash"])
     cash = usd(userCash.cash) # using sqlite: userCash[0]["cash"])
     return render_template("index.html", message = session["message"], rows = rows, cash = cash, totalValue = totalValue)
@@ -317,7 +310,6 @@ def changepassword():
             # Add user to database
             rows = db.execute("UPDATE users SET hash = :hash WHERE id = :user_id;", {"hash": generate_password_hash(password), "user_id": session["user_id"]})
             db.commit()
-            
             session["message"] = "Your password has been changed successfully!"
 
             # Redirect user to home page
