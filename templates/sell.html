@@ -10,10 +10,11 @@
             <select name="symbol" class="selectpicker form-control">
                 <option selected>Symbol</option>
                 {%for row in rows%}
-                    <option value="{{ row["symbol"] }}">{{ row["symbol"] }}</option>
+                    <option value="{{ row["symbol"] }}">{{ row["symbol"] }} ({{ row["shares"]}} shares owned)</option>
                 {%endfor%}
             </select>
         </div>
+        {#consider flashing shares owned message#}
         <div class="form-group">
             <input autocomplete="off" autofocus class="form-control" name="shares" placeholder="Shares" type="number" min="1">
         </div>
