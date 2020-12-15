@@ -7,15 +7,12 @@ from werkzeug.exceptions import default_exceptions, HTTPException, InternalServe
 from werkzeug.security import check_password_hash, generate_password_hash
 import datetime
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import create_engine
-from sqlalchemy.orm import scoped_session, sessionmaker
+from sqlalchemy.dialects.postgresql import JSON
 
 from helpers import apology, login_required, lookup, usd, vetPassword
 
 # Configure application and database engine
 app = Flask(__name__)
-engine = create_engine(os.getenv("DATABASE_URL"))
-db = scoped_session(sessionmaker(bind=engine))
 
 # Ensure templates are auto-reloaded
 app.config["TEMPLATES_AUTO_RELOAD"] = True
@@ -31,11 +28,47 @@ def after_request(response):
 # Custom filter
 app.jinja_env.filters["usd"] = usd
 
-# Configure session to use filesystem (instead of signed cookies)
+#Configure session to use filesystem (instead of signed cookies)
 app.config["SESSION_FILE_DIR"] = mkdtemp()
 app.config["SESSION_PERMANENT"] = False
 app.config["SESSION_TYPE"] = "filesystem"
+#Session(app)
+
+# Configure session to use memcache
+#app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY")
+app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL")
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+#app.config["SESSION_TYPE"] = "sqlalchemy"
+db = SQLAlchemy(app)
+
+#app.config["SESSION_SQLALCHEMY"] = db
 Session(app)
+
+class User(db.Model):
+    __tablename__ = "users"
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String, nullable=False)
+    hash = db.Column(db.String, nullable=False)
+    cash = db.Column(db.Numeric, nullable=False)
+
+class Position(db.Model):
+    __tablename__ = "positions"
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    symbol = db.Column(db.String, nullable=False)
+    shares = db.Column(db.Integer, nullable=False)
+
+class Transaction(db.Model):
+    __tablename__ = "transactions"
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    symbol = db.Column(db.String, nullable=False)
+    shares = db.Column(db.Integer, nullable=False)
+    shareprice = db.Column(db.Numeric, nullable=False)
+    totalprice = db.Column(db.Numeric, nullable=False)
+    date = db.Column(db.Date, nullable=False)
+    time = db.Column(db.Time, nullable=False)
+
 
 # Make sure API key is set
 if not os.environ.get("API_KEY"):
@@ -46,20 +79,17 @@ if not os.environ.get("API_KEY"):
 @login_required
 def index():
     session["message"] = "Here is your portfolio!"
-    # SQLAlchemy returns a list of Tuples
-    portfolio = db.execute("SELECT symbol, shares FROM portfolio WHERE user_id = :user_id;", {"user_id": session["user_id"]}).fetchall()
-    # initialize list of dictionaries - easier to use than tuple returned by the databas engine
-    rows = [dict() for x in range(len(portfolio))]
+    positions = Position.query.filter_by(user_id = session["user_id"]).all()
+    # initialize list of dictionaries for rendering
+    rows = [dict() for x in range(len(positions))]
     totalValue = 0
-    for row, portfolio_stock in zip(rows, portfolio):
-        # tuple values are indexed by integers
-        symbol = portfolio_stock.symbol # using sqlite: row["symbol"]; portfolio_stock[0] also works with postgreSQL - just accessing a tuple value
+    for row, position in zip(rows, positions):
+        symbol = position.symbol
         quote = lookup(symbol)
         name = quote["name"]
         price = quote["price"]
-        shares = portfolio_stock.shares # using sqlite: ...float(row["shares"]); portfolio_stock[1] also works with postgreSQL - just accessing a tuple value
-        #row["symbol"] = symbol.upper() #update the database with capitalized symbol for consistent formating?
-        total = float(quote["price"]) * float(shares) # using sqlite: ...float(row["shares"])
+        shares = position.shares
+        total = float(quote["price"]) * float(shares)
         totalValue += total
         # add data to rows from rendering
         row["symbol"] = symbol
@@ -67,9 +97,11 @@ def index():
         row["shares"] = shares
         row["total"] = usd(total)
         row["price"] = usd(price)
-    userCash = db.execute("SELECT cash FROM users WHERE id = :user_id;", {"user_id": session["user_id"]}).fetchone()
-    totalValue = usd(totalValue + float(userCash.cash)) # using sqlite: userCash[0]["cash"])
-    cash = usd(userCash.cash) # using sqlite: userCash[0]["cash"])
+
+    user = User.query.filter_by(id = session["user_id"]).first() # returns a single user object
+    totalValue = usd(totalValue + float(user.cash))
+    cash = usd(user.cash)
+    rows.sort(key = lambda i: i['symbol'])
     return render_template("index.html", message = session["message"], rows = rows, cash = cash, totalValue = totalValue)
 
 
@@ -87,32 +119,35 @@ def buy():
         if not shares:
             return apology("must enter number of shares", 403)
         quoted = lookup(symbol)
-        price = float(shares) * quoted["price"]
+        shareprice = quoted["price"]
+        price = round(float(shares) * shareprice, 2)
         # redefine / reassign symbol to that which was returned from API - instead of what user typed in
         symbol = quoted["symbol"]
-        userCash = db.execute("SELECT cash FROM users WHERE id = :user_id;", {"user_id": session["user_id"]}).fetchone() # consider storing in session instead
+        user = User.query.filter_by(id = session["user_id"]).first()
         if quoted == None:
             return apology("symbol not recognized", 403)
-        elif price > float(userCash.cash): # see if user can afford stock
+        elif price > float(user.cash): # see if user can afford stock
            return apology("you do not have enough cash to complete this purchase")
         else: # purchase stock for user
             # modify user's cash in users table
-            db.execute("UPDATE users SET cash = :cash WHERE id = :user_id;", {"cash": float(userCash.cash) - price, "user_id": session["user_id"]})
-            # create or modfy user's stock ownership in portfolio table
+            user.cash = float(user.cash) - price
+            # create or modfy user's stock ownership in positions table
             # check if user already owns shares of this stock
-            sharesOwned = db.execute("SELECT shares FROM portfolio WHERE user_id = :user_id AND symbol = :symbol;", {"user_id": session["user_id"], "symbol": symbol}).fetchone()
+            position = Position.query.filter_by(user_id = session["user_id"], symbol = symbol).first()
             # if user does not already own stock, create new row for new stock
-            if not sharesOwned:
-                db.execute("INSERT INTO portfolio (user_id, symbol, shares) VALUES (:user_id, :symbol, :shares);", {"user_id": session["user_id"], "symbol": symbol, "shares": shares})
-                db.commit()
+            if not position:
+                # Insert new position
+                new_position = Position(user_id = session["user_id"], symbol = symbol, shares = shares)
+                db.session.add(new_position)
             # else update row with new share total if user already owns stock    
             else:
-                newSharesTotal = int(sharesOwned.shares) + int(shares)  
-                db.execute("UPDATE portfolio SET shares = :shares WHERE user_id = :user_id AND symbol = :symbol;", {"shares": newSharesTotal, "user_id": session["user_id"], "symbol": symbol})          
-                db.commit()
+                new_shares_total = int(position.shares) + int(shares)          
+                position.shares = new_shares_total
             # create transaction record
-            db.execute("INSERT INTO transactions (user_id, symbol, shares, shareprice, totalprice, date, time) VALUES (:user_id, :symbol, :shares, :shareprice, :totalprice, :date, :time);", {"user_id": session["user_id"], "symbol": symbol, "shares": shares, "shareprice": quoted["price"], "totalprice": price, "date": date, "time": time})
-            db.commit()
+            new_transaction = Transaction(user_id = session["user_id"], symbol = symbol, shares = shares, shareprice = shareprice, totalprice = -price, date = date, time = time)
+            db.session.add(new_transaction)
+            db.session.commit()  
+
             message = "You bought " + shares + " shares of " + symbol + "!"
             session["message"] = message
 
@@ -124,17 +159,22 @@ def buy():
 @login_required
 def history():
     session["message"] = "Here is your purchase history!"
-    transactions = db.execute("SELECT symbol, shares, shareprice, totalprice, date, time FROM transactions WHERE user_id = :user_id;", {"user_id": session["user_id"]}).fetchall()
+    transactions = Transaction.query.filter_by(user_id = session["user_id"]).all()
+    # initialize list of dictionaries for rendering
     rows = [dict() for x in range(len(transactions))]
     for row, transaction in zip(rows, transactions):
-        symbol = transaction.symbol # using sqlite row["symbol"]
+        symbol = transaction.symbol
         quoted = lookup(symbol)
         name = quoted["name"]
+        # add data to rows from rendering
         row["name"] = name
         row["symbol"] = symbol
         row["shares"] = transaction.shares
-        row["shareprice"] = usd(transaction.shareprice) # using sqlite usd(row["shareprice"])
-        row["totalprice"] = usd(transaction.totalprice)
+        row["shareprice"] = usd(transaction.shareprice)
+        if transaction.totalprice > 0:
+            row["totalprice"] = "+" + usd(transaction.totalprice)
+        else:
+            row["totalprice"] = "-" + usd(-transaction.totalprice)
         row["date"] = transaction.date
         row["time"] = transaction.time
         if transaction.shares > 0:
@@ -163,17 +203,18 @@ def login():
             return apology("must provide password", 403)
 
         # Query database for username
-        rows = db.execute("SELECT * FROM users WHERE username = :username", {"username": request.form.get("username")}).fetchall()
+        # .first() method just returns a single object, not a list of objects / list of rows
+        user = User.query.filter_by(username = request.form.get("username")).first()
         
         # Ensure username exists and password is correct
-        if len(rows) != 1 or not check_password_hash(rows[0]["hash"], request.form.get("password")):
+        if not user or not check_password_hash(user.hash, request.form.get("password")):
             return apology("invalid username and/or password", 403)
 
         # Remember which user has logged in
-        session["user_id"] = rows[0]["id"]
+        session["user_id"] = user.id
 
         # Remember username of user that has logged in
-        session["username"] = rows[0]["username"]
+        session["username"] = user.username
 
         session["message"] = "Welcome back!"
 
@@ -213,7 +254,6 @@ def quote():
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
-
         # Store variables for local use
         username = request.form.get("username")
         password = request.form.get("password")
@@ -225,7 +265,10 @@ def register():
             return apology("must provide username", 403)
 
         # Query database to see if username already exists
-        elif db.execute("SELECT username FROM users WHERE username = :username", {"username": username}).rowcount == 1:
+        #elif db.execute("SELECT username FROM users WHERE username = :username", {"username": username}).rowcount == 1:
+        elif len(User.query.filter_by(username = username).all()) == 1:
+            users = User.query.filter_by(username = username).all()
+            print (users)
             return apology("username already exists", 403)
 
         elif passwordInsecure:
@@ -233,15 +276,18 @@ def register():
 
         else:
             # Add user to database
-            db.execute("INSERT INTO users (username, hash, cash) VALUES (:username, :hash, :cash);",
-                              {"username": username, "hash": generate_password_hash(password), "cash": 10000})
-            db.commit()                  
+            # db.execute("INSERT INTO users (username, hash, cash) VALUES (:username, :hash, :cash);",
+            #                  {"username": username, "hash": generate_password_hash(password), "cash": 10000})
+            new_user = User(username = username, hash = generate_password_hash(password), cash = 10000)
+            db.session.add(new_user)
+            print(f"New user added: {new_user.username} with ${new_user.cash}")
+
+            db.session.commit()                  
 
             session["message"] = "Registered!"
 
             # Redirect user to home page
             return redirect("/login")
-
 
     # User reached route via GET (as by clicking a link or via redirect)
     else:
@@ -263,41 +309,48 @@ def sell():
             return apology("must enter number of shares", 403)
         quoted = lookup(symbol)
 
-        portfolio = db.execute("SELECT symbol, shares FROM portfolio WHERE user_id = :user_id AND symbol = :symbol;", {"user_id": session["user_id"], "symbol": symbol}).fetchone()
-        sharesowned = portfolio.shares
+        position = Position.query.filter_by(user_id = session["user_id"], symbol = symbol).first()
+        shares_owned = position.shares
 
-        if shares > sharesowned:
+        if shares > shares_owned:
             return apology("You are attempting to sell more shares than you own.", 403)
-        #update portfolio
-        if shares == sharesowned:
-            db.execute("DELETE FROM portfolio WHERE user_id = :user_id AND symbol = :symbol;", {"user_id": session["user_id"], "symbol": symbol})
+        #update positions table
+        if shares == shares_owned:
+            db.session.delete(position)
         else:
-            db.execute("UPDATE portfolio SET shares = :sharesUpdate WHERE user_id = :user_id AND symbol = :symbol;", {"sharesUpdate": sharesowned - shares,"user_id": session["user_id"], "symbol": symbol})
-        #update users
-        price = float(shares) * quoted["price"]
-        userCash = db.execute("SELECT cash FROM users WHERE id = :user_id;", {"user_id": session["user_id"]}).fetchone() # consider storing in session instead
+            position.shares = shares_owned - shares
 
-        db.execute("UPDATE users SET cash = :cash WHERE id = :user_id;", {"cash": float(userCash.cash) + price, "user_id": session["user_id"]})
+        #update users table
+        shareprice = quoted["price"]
+        saleprice = float(shares) * shareprice
+        user = User.query.filter_by(id = session["user_id"]).first()
+        user.cash = round(float(user.cash) + saleprice, 2)
+
         #update transaction history
-        db.execute("INSERT INTO transactions (user_id, symbol, shares, shareprice, totalprice, date, time) VALUES (:user_id, :symbol, :shares, :shareprice, :totalprice, :date, :time);", {"user_id": session["user_id"], "symbol": symbol, "shares": -shares, "shareprice": quoted["price"], "totalprice": -price, "date": date, "time": time})
+        new_transaction = Transaction(user_id = session["user_id"], symbol = symbol, shares = -shares, shareprice = shareprice, totalprice = saleprice, date = date, time = time)
+        db.session.add(new_transaction)
+        
+        db.session.commit()
 
-        db.commit()
         message = "You just sold " + str(shares) + " shares of " + symbol + "!"
         session["message"] = message
 
         return redirect("/")
     else:
-        portfolio = db.execute("SELECT symbol, shares FROM portfolio WHERE user_id = :user_id;", {"user_id": session["user_id"]}).fetchall()
-        rows = [dict() for x in range(len(portfolio))]
-        for row, portfolio_stock in zip(rows, portfolio):
-            row["symbol"] = portfolio_stock.symbol
-            row["shares"] = portfolio_stock.shares
+        positions = Position.query.filter_by(user_id = session["user_id"]).all()
+        # initialize list of dictionaries for rendering
+        rows = [dict() for x in range(len(positions))]
+        for row, position in zip(rows, positions):
+            # add data to rows from rendering
+            row["symbol"] = position.symbol
+            row["shares"] = position.shares
+        rows.sort(key = lambda i: i['symbol'])
         return render_template("sell.html", rows=rows)
 
 @app.route("/changepassword", methods=["GET", "POST"])
+@login_required
 def changepassword():
     if request.method == "POST":
-
         # Store variables for local use
         password = request.form.get("password")
         confirmation = request.form.get("confirmation")
@@ -307,9 +360,10 @@ def changepassword():
             return apology(passwordInsecure, 403)
 
         else:
-            # Add user to database
-            rows = db.execute("UPDATE users SET hash = :hash WHERE id = :user_id;", {"hash": generate_password_hash(password), "user_id": session["user_id"]})
-            db.commit()
+            # Update user hash
+            user = User.query.filter_by(id = session["user_id"]).first()
+            user.hash = generate_password_hash(password)
+            db.session.commit()
             session["message"] = "Your password has been changed successfully!"
 
             # Redirect user to home page
