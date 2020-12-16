@@ -40,8 +40,8 @@ db = SQLAlchemy(app)
 
 # Configure session to use memcache
 cache_servers = os.environ.get('MEMCACHIER_SERVERS').split(',')
-username = os.environ.get('MEMCACHIER_USERNAME')
-password = os.environ.get('MEMCACHIER_PASSWORD')
+cache_user = os.environ.get('MEMCACHIER_USERNAME')
+cache_pass = os.environ.get('MEMCACHIER_PASSWORD')
 
 app.config.from_mapping(
     SESSION_TYPE = 'memcached',
