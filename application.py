@@ -1,8 +1,7 @@
 import os
-
+import pylibmc
 from flask import Flask, flash, jsonify, redirect, render_template, request, session
 from flask_session import Session
-from tempfile import mkdtemp
 from werkzeug.exceptions import default_exceptions, HTTPException, InternalServerError
 from werkzeug.security import check_password_hash, generate_password_hash
 import datetime
@@ -29,19 +28,44 @@ def after_request(response):
 app.jinja_env.filters["usd"] = usd
 
 #Configure session to use filesystem (instead of signed cookies)
-app.config["SESSION_FILE_DIR"] = mkdtemp()
-app.config["SESSION_PERMANENT"] = False
-app.config["SESSION_TYPE"] = "filesystem"
+#app.config["SESSION_FILE_DIR"] = mkdtemp()
+#app.config["SESSION_PERMANENT"] = False
+#app.config["SESSION_TYPE"] = "filesystem"
 #Session(app)
 
-# Configure session to use memcache
-#app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY")
+# Configure SQLAlchemy to use postgreSQL database
 app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL")
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-#app.config["SESSION_TYPE"] = "sqlalchemy"
 db = SQLAlchemy(app)
 
-#app.config["SESSION_SQLALCHEMY"] = db
+# Configure session to use memcache
+servers = os.environ.get('MEMCACHIER_SERVERS').split(',')
+username = os.environ.get('MEMCACHIER_USERNAME')
+passwd = os.environ.get('MEMCACHIER_PASSWORD')
+
+app.config.from_mapping(
+    SESSION_TYPE = 'memcached',
+    SESSION_MEMCACHED =
+        pylibmc.Client(cache_servers.split(','), binary=True,
+                       username=cache_user, password=cache_pass,
+                       behaviors={
+                            # Faster IO
+                            'tcp_nodelay': True,
+                            # Keep connection alive
+                            'tcp_keepalive': True,
+                            # Timeout for set/get requests
+                            'connect_timeout': 2000, # ms
+                            'send_timeout': 750 * 1000, # us
+                            'receive_timeout': 750 * 1000, # us
+                            '_poll_timeout': 2000, # ms
+                            # Better failover
+                            'ketama': True,
+                            'remove_failed': 1,
+                            'retry_timeout': 2,
+                            'dead_timeout': 30,
+                       })
+)
+
 Session(app)
 
 class User(db.Model):
