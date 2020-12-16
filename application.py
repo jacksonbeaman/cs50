@@ -39,14 +39,14 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
 
 # Configure session to use memcache
-servers = os.environ.get('MEMCACHIER_SERVERS').split(',')
+cache_servers = os.environ.get('MEMCACHIER_SERVERS').split(',')
 username = os.environ.get('MEMCACHIER_USERNAME')
-passwd = os.environ.get('MEMCACHIER_PASSWORD')
+password = os.environ.get('MEMCACHIER_PASSWORD')
 
 app.config.from_mapping(
     SESSION_TYPE = 'memcached',
     SESSION_MEMCACHED =
-        pylibmc.Client(cache_servers.split(','), binary=True,
+        pylibmc.Client(cache_servers, binary=True,
                        username=cache_user, password=cache_pass,
                        behaviors={
                             # Faster IO
