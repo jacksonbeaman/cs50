@@ -142,6 +142,8 @@ def buy():
         shares = request.form.get("shares")
         if not shares:
             return apology("must enter number of shares", 403)
+        # remove leading and trailing whitespaces from user input - iOS mobile issue
+        symbol = symbol.strip()
         quoted = lookup(symbol)
         shareprice = quoted["price"]
         price = round(float(shares) * shareprice, 2)
@@ -266,6 +268,8 @@ def logout():
 def quote():
     if request.method == "POST":
         symbol = request.form.get("symbol")
+        # remove leading and trailing whitespaces from user input - iOS mobile issue
+        symbol = symbol.strip()
         quoted = lookup(symbol)
         if quoted == None:
             return apology("symbol not recognized", 403)
